@@ -1,0 +1,27 @@
+# deps
+/node_modules
+
+# next
+/.next/
+/out/
+
+# production
+/build
+
+# env
+.env
+.env.local
+.env.*.local
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# 관리자 페이지에서 업로드한 상품 이미지 (로컬 데모 저장소, 커밋 대상 아님)
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

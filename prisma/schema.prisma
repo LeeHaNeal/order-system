@@ -1,0 +1,215 @@
+// 결제 연동 주문 시스템 - 데이터 모델
+// 결제(Payment)는 실제 PG사 대신 mock provider 를 사용하지만,
+// 스키마 자체는 실제 PG 연동 시에도 그대로 쓸 수 있도록 설계했습니다.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT // 주문 생성, 결제 대기
+  PAID // 결제 완료
+  FAILED // 결제 실패
+  PREPARING // 상품 준비중 (결제완료 후 관리자 처리)
+  SHIPPING // 배송중
+  DELIVERED // 배송완료
+  CANCELLED // 주문 취소
+}
+
+enum PaymentStatus {
+  READY // 결제창 진입, 승인 대기
+  APPROVED // 승인 완료
+  FAILED // 승인 실패
+  CANCELLED // 결제 취소(환불)
+}
+
+enum DiscountType {
+  PERCENT // 정률 할인 (%)
+  AMOUNT // 정액 할인 (원)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cart      Cart?
+  orders    Order[]
+  wishlist  WishlistItem[]
+  reviews   Review[]
+
+  @@map("users")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  category    String   @default("기타")
+  price       Int // 원 단위 (KRW)
+  stock       Int      @default(0)
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
+  wishlistedBy WishlistItem[]
+  reviews      Review[]
+
+  @@map("products")
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@map("wishlist_items")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int // 1~5
+  comment   String   @default("")
+  createdAt DateTime @default(now())
+
+  // 상품 하나당 사용자 한 명이 리뷰 하나만 남길 수 있도록 제한합니다.
+  @@unique([productId, userId])
+  @@map("reviews")
+}
+
+model Coupon {
+  id                String       @id @default(cuid())
+  code              String       @unique
+  description       String       @default("")
+  discountType      DiscountType
+  discountValue     Int // PERCENT면 %(0~100), AMOUNT면 원
+  minOrderAmount    Int          @default(0)
+  maxDiscountAmount Int? // PERCENT 할인일 때 최대 할인 금액 상한 (선택)
+  isActive          Boolean      @default(true)
+  expiresAt         DateTime?
+  createdAt         DateTime     @default(now())
+
+  orders Order[]
+
+  @@map("coupons")
+}
+
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique // 사람이 읽을 수 있는 주문번호 (예: ORD-20260902-AB12CD)
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  status          OrderStatus @default(PENDING_PAYMENT)
+  subtotalAmount  Int // 할인 적용 전 상품금액 합계
+  discountAmount  Int         @default(0) // 쿠폰 할인 금액
+  totalAmount     Int // 실제 결제금액 (subtotalAmount - discountAmount)
+  couponId        String?
+  coupon          Coupon?     @relation(fields: [couponId], references: [id])
+  receiverName    String
+  receiverPhone   String
+  receiverAddr    String
+  memo            String      @default("")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items         OrderItem[]
+  payment       Payment?
+  statusHistory OrderStatusHistory[]
+
+  @@index([userId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  productName String // 주문 시점 상품명 스냅샷
+  unitPrice   Int // 주문 시점 단가 스냅샷
+  quantity    Int
+
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String      @default("")
+  createdAt DateTime    @default(now())
+
+  @@map("order_status_history")
+}
+
+// 결제 정보. provider/paymentKey/rawResponse 는 실제 PG 연동 시에도
+// 동일한 구조를 사용할 수 있도록 일반화되어 있습니다.
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String        @unique
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider    String // "mock" | "toss" 등
+  paymentKey  String        @unique // PG사가 발급하는 결제 건 식별자
+  method      String        @default("CARD") // CARD, VIRTUAL_ACCOUNT, EASY_PAY 등
+  amount      Int
+  status      PaymentStatus @default(READY)
+  requestedAt DateTime      @default(now())
+  approvedAt  DateTime?
+  failReason  String?
+  rawResponse Json? // PG 응답 원문(mock 에서는 시뮬레이션된 응답)을 그대로 보관
+
+  @@map("payments")
+}
