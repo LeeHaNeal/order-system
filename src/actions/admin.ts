@@ -186,10 +186,9 @@ export async function updateOrderStatus(formData: FormData): Promise<void> {
 
   await prisma.$transaction(async (tx) => {
     // 취소 처리 시, 이미 결제/준비 단계였다면 재고를 복구합니다.
-    if (
+       if (
       nextStatus === "CANCELLED" &&
-      (order.status === "PAID" || order.status === "PREPARING") &&
-      order.status !== "CANCELLED"
+      (order.status === "PAID" || order.status === "PREPARING")
     ) {
       for (const item of order.items) {
         await tx.product.update({
