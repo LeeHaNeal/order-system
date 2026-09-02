@@ -7,8 +7,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // 런타임(앱)은 커넥션 풀링(pgbouncer)을 거치는 주소를 사용하고,
+  // 마이그레이션(prisma migrate)은 풀링을 거치지 않는 직접 연결 주소를 사용합니다.
+  // Neon 등 서버리스 Postgres + Vercel 서버리스 함수 조합에서 권장되는 구성입니다.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
